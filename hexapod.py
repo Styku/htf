@@ -11,23 +11,22 @@ class Joint(object):
     def __init__(self):
         self.center = 1500
         self.pos = self.center
-        self.maxPos = 1800
-        self.minPos = 1200
-        self.mvRange = self.maxPos-self.center
+        self.mvRange = 300
+        self.maxPos = self.center + self.mvRange
+        self.minPos = self.center - self.mvRange 
         self.port = 0
         self.maxT = 40 
         self.side = -1
         self.phase = 0
 
+    def setCenter(self, c):
+        self.center = c 
     def moveCoxa(self, t):
         if self.phase == 1:
             t += self.maxT/4
 
         t = t%self.maxT
-        if t <= self.maxT/2 and self.phase == 0:
-            self.pos = self.center + self.side*abs(self.mvRange*np.sin(2*(np.pi/self.maxT)*t))
-        if t > self.maxT/2 and self.phase == 1:
-            self.pos = self.center + self.side*abs(self.mvRange*np.sin(2*(np.pi/self.maxT)*t))
+        self.pos = self.center + self.side*abs(self.mvRange*np.sin(2*(np.pi/self.maxT)*t))
         return ("#%d P%d" % (self.port, self.pos))
 
     def moveFemur(self, t):
@@ -35,9 +34,7 @@ class Joint(object):
             t += self.maxT/4
 
         t = t%self.maxT
-        if t <= self.maxT/4 and self.phase == 0:
-            self.pos = self.center + self.side*abs(self.mvRange*np.sin(4*(np.pi/(self.maxT))*t))
-        if t > self.maxT/2 and t <= (self.maxT*3)/4 and self.phase == 1:
+        if (t <= self.maxT/4 or (t > self.maxT/2 and t <= (3*self.maxT)/4)):
             self.pos = self.center + self.side*abs(self.mvRange*np.sin(4*(np.pi/(self.maxT))*t))
         return ("#%d P%d" % (self.port, self.pos))
 
@@ -115,14 +112,6 @@ class Controller(object):
         self.forward = False
         self.pad = XboxController.XboxController(None, deadzone = 30, scale = 100, invertYAxis = True)
 
-        #pad.setupControlCallback(ctrl.XboxControls.LTHUMBY, self.forward)
-
-    def forward(self, val):
-        if False == self.moved:
-            self.state += 1
-            self.state = self.state%30
-            self.moved = True
-
     def run(self):
         print("Controller support is running")
         while True: 
@@ -136,12 +125,11 @@ class Controller(object):
 
             if self.forward == True:
                 self.state += 1
-            #print event.type
-
-            for i in [0,1,2,3,4,5]:
-                self.driver.sendCommand(self.robot.legs[i].coxa.moveCoxa(self.state))
-                self.driver.sendCommand(self.robot.legs[i].femur.moveFemur(self.state))
-           
+                for i in [0,1,2,3,4,5]:
+                    self.driver.sendCommand(self.robot.legs[i].coxa.moveCoxa(self.state))
+                    self.driver.sendCommand(self.robot.legs[i].femur.moveFemur(self.state))
+          
+            
             self.driver.executeCommand()
             #pygame.event.clear()
             time.sleep(0.020)

@@ -9,33 +9,52 @@ import math
 
 class Joint(object):
     def __init__(self):
+        self.absoluteCenter = 1500
         self.center = 1500
         self.pos = self.center
         self.mvRange = 300
         self.maxPos = self.center + self.mvRange
         self.minPos = self.center - self.mvRange 
         self.port = 0
-        self.maxT = 40 
+        self.maxT = 80 
         self.side = -1
         self.phase = 0
+        self.centerRange = 500
+    def changeCenter(self, c):
+        if self.center + c <= self.absoluteCenter + self.centerRange and self.center + c >= self.absoluteCenter - self.centerRange:
+            self.center += c*self.side
+            self.maxPos = self.center + self.mvRange
+            self.minPos = self.center - self.mvRange 
+        
+    def moveCenter(self):
+        self.pos = self.center
+        return ("#%d P%d" % (self.port, self.center))
 
-    def setCenter(self, c):
-        self.center = c 
     def moveCoxa(self, t):
         if self.phase == 1:
             t += self.maxT/4
+        if self.phase == 0 or t >= self.maxT/2:
+            t = t%self.maxT
+            self.pos = self.center + self.side*abs(self.mvRange*np.sin(2*(np.pi/self.maxT)*t))
 
-        t = t%self.maxT
-        self.pos = self.center + self.side*abs(self.mvRange*np.sin(2*(np.pi/self.maxT)*t))
         return ("#%d P%d" % (self.port, self.pos))
 
     def moveFemur(self, t):
         if self.phase == 1:
             t += self.maxT/4
+        if self.phase == 0 or t >= self.maxT/2:
+            t = t%self.maxT
+            if (t <= self.maxT/4 or (t > self.maxT/2 and t <= (3*self.maxT)/4)):
+                self.pos = self.center + self.side*abs(self.mvRange*np.sin(4*(np.pi/(self.maxT))*t))
+        return ("#%d P%d" % (self.port, self.pos))
 
-        t = t%self.maxT
-        if (t <= self.maxT/4 or (t > self.maxT/2 and t <= (3*self.maxT)/4)):
-            self.pos = self.center + self.side*abs(self.mvRange*np.sin(4*(np.pi/(self.maxT))*t))
+    def strafeTibia(self, t):
+        if self.phase == 1:
+            t += self.maxT/4
+        if self.phase == 0 or t >= self.maxT/2:
+            t = t%self.maxT
+            self.pos = self.center + self.side*abs(self.mvRange*np.sin(2*(np.pi/self.maxT)*t))
+
         return ("#%d P%d" % (self.port, self.pos))
 
 class Leg(object):
@@ -84,10 +103,43 @@ class Hexapod(object):
 
         for i in [1,3,5]:
             self.legs[i].setPhase(1)
+    
+    def connectDriver(self, drv):
+        self.driver = drv
 
     def checkLegs(self):
         for i in range(6):
             print("Leg %d, side %d, port %d \n" % (i, self.legs[i].side, self.legs[i].port));
+
+    def moveForward(self, state):
+        for i in range(6):
+            self.driver.sendCommand(self.legs[i].coxa.moveCoxa(state))
+            self.driver.sendCommand(self.legs[i].femur.moveFemur(state))
+
+    def strafeRight(self, state):
+        for i in range(6):
+            self.driver.sendCommand(self.legs[i].tibia.strafeTibia(state))
+            self.driver.sendCommand(self.legs[i].femur.moveFemur(state))
+
+    def stand(self):
+        for i in range(6):
+            self.driver.sendCommand(self.legs[i].coxa.moveCenter())
+            self.driver.sendCommand(self.legs[i].femur.moveCenter())
+            self.driver.sendCommand(self.legs[i].tibia.moveCenter())
+    
+    def up(self):
+        for i in range(6):
+            self.legs[i].tibia.changeCenter(-5)
+            self.legs[i].femur.changeCenter(-5)
+            self.driver.sendCommand(self.legs[i].tibia.moveCenter())
+            self.driver.sendCommand(self.legs[i].femur.moveCenter())
+
+    def down(self):
+        for i in range(6):
+            self.legs[i].tibia.changeCenter(5)
+            self.legs[i].femur.changeCenter(5)
+            self.driver.sendCommand(self.legs[i].tibia.moveCenter())
+            self.driver.sendCommand(self.legs[i].femur.moveCenter())
 
 class ServoDriver(object):
     def __init__(self, devport="/dev/ttyACM0", devbaudrate=115200):
@@ -105,30 +157,77 @@ class ServoDriver(object):
 
 class Controller(object):
     
+    class Action():
+        STAND = 0
+        FORWARD = 1
+        BACKWARD = 2
+        STRAFE_LEFT = 3
+        STRAFE_RIGHT = 4
+        TURN_LEFT = 5
+        TURN_RIGHT = 6
+        UP = 7
+        DOWN = 8
+
     def __init__(self):
         self.state = 0
+        self.idle = 0
+        self.speed = 0
+        self.idle_threshold = 200
         self.robot = Hexapod()
         self.driver = ServoDriver()
-        self.forward = False
+        self.robot.connectDriver(self.driver)
+        self.action = [True,False,False,False,False,False,False,False,False]
         self.pad = XboxController.XboxController(None, deadzone = 30, scale = 100, invertYAxis = True)
+    
+    def getInput(self):
+        moved = False;
+        for event in pygame.event.get():
+            print event.axis
+            print event.value
+            if event.type == 7: #left analog
+                if event.axis == 1:
+                    if event.value < -0.3:
+                        self.action[self.Action.FORWARD]=True
+                        self.speed = 2 if abs(event.value)>0.9 else 1
+                    elif event.value >= -0.3 and event.value <= 0.3:
+                        self.action[self.Action.FORWARD]=False
+                        self.speed = 0
+                    else:
+                        self.action[self.Action.FORWARD]=True
+                        self.speed = -2 if abs(event.value)>0.9 else -1
+                elif event.axis ==5: #Right Trigger 
+                    if event.value > 0:
+                        self.action[self.Action.UP]=True
+                    else:
+                        self.action[self.Action.UP]=False
+
+                elif event.axis ==2: #Left Trigger 
+                    if event.value > 0:
+                        self.action[self.Action.DOWN]=True
+                    else:
+                        self.action[self.Action.DOWN]=False
+
+        if sum(self.action) == 0:
+            self.action[self.Action.STAND] = True
 
     def run(self):
         print("Controller support is running")
         while True: 
-            event = pygame.event.poll();
-            if event.type == 7 and event.axis == 1: 
-                print(event.value)
-                if event.value < -0.3:
-                    self.forward = True
-                elif event.value >= -0.3:
-                    self.forward = False
+            self.getInput()
 
-            if self.forward == True:
-                self.state += 1
-                for i in [0,1,2,3,4,5]:
-                    self.driver.sendCommand(self.robot.legs[i].coxa.moveCoxa(self.state))
-                    self.driver.sendCommand(self.robot.legs[i].femur.moveFemur(self.state))
-          
+            if self.action[self.Action.FORWARD]:
+                self.state += self.speed
+                self.robot.moveForward(self.state)
+            elif self.action[self.Action.STRAFE_RIGHT]:
+                self.state += self.speed
+                self.robot.strafeRight(self.state)
+            elif self.action[self.Action.UP]:
+                self.robot.up()
+            elif self.action[self.Action.DOWN]:
+                self.robot.down()
+            elif self.action[self.Action.STAND]:
+                self.state = 0
+                self.robot.stand()
             
             self.driver.executeCommand()
             #pygame.event.clear()

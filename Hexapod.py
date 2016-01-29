@@ -42,7 +42,18 @@ class Hexapod(object):
             self.legs[i].femur.moveFemur(state)
             self.driver.sendCommand(self.legs[i].tibia.getCommand())
             self.driver.sendCommand(self.legs[i].femur.getCommand())
-
+            
+        if(state==12):
+            self.legs[0].coxa.pos -= 250
+            self.driver.sendCommand(self.legs[0].coxa.getCommand())
+            self.legs[2].coxa.pos += 230
+            self.driver.sendCommand(self.legs[2].coxa.getCommand())
+        
+        if(state==32):
+            self.legs[3].coxa.pos -= 250
+            self.driver.sendCommand(self.legs[3].coxa.getCommand())
+            self.legs[5].coxa.pos += 230
+            self.driver.sendCommand(self.legs[5].coxa.getCommand())
     def stand(self):
         for i in range(6):
             self.legs[i].coxa.moveCenter()

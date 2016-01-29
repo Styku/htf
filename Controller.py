@@ -1,6 +1,7 @@
 import pygame
 import XboxController
 import time
+from subprocess import call
 from Hexapod import Hexapod
 from ServoDriver import ServoDriver
 
@@ -46,6 +47,9 @@ class Controller(object):
             f.write("%d\n" % self.robot.legs[i].femur.calibration)
             f.write("%d\n" % self.robot.legs[i].tibia.calibration)
         f.close()
+        
+    def speak(self, text):
+        call(["espeak", "-ven+m5", "-k6", "-s150", text])
     
     def loadCalibrationData(self):
         f = open("calib.dat", "r")
@@ -57,7 +61,7 @@ class Controller(object):
             self.robot.legs[i].femur.calibration = int(lines[i*3+1])
             self.robot.legs[i].tibia.calibration = int(lines[i*3+2])
         f.close()
-        
+    
     def getInput(self):
         for event in pygame.event.get():
             print event
@@ -72,6 +76,16 @@ class Controller(object):
                             self.speed = 0
                         else:
                             self.action[self.Action.FORWARD]=True
+                            self.speed = -2 if abs(event.value)>0.9 else -1
+                    elif event.axis == 0: #STRAFE
+                        if event.value < -0.3:
+                            self.action[self.Action.STRAFE_RIGHT]=True
+                            self.speed = 2 if abs(event.value)>0.9 else 1
+                        elif event.value >= -0.3 and event.value <= 0.3:
+                            self.action[self.Action.STRAFE_RIGHT]=False
+                            self.speed = 0
+                        else:
+                            self.action[self.Action.STRAFE_RIGHT]=True
                             self.speed = -2 if abs(event.value)>0.9 else -1
                     elif event.axis ==5: #Right Trigger 
                         if event.value > 0:
@@ -97,6 +111,7 @@ class Controller(object):
             elif event.type == 11 and event.button == 6:
                 if self.mode != self.Mode.CALIBRATION: #select
                     print "Calibration mode on"
+                    #self.speak("Calibration mode on")
                     self.mode = self.Mode.CALIBRATION
                     print self.mode
                 else:

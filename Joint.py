@@ -57,7 +57,7 @@ class Joint(object):
             t += self.maxT/4
         if self.phase == 0 or t >= self.maxT/2:
             t = t%self.maxT
-            self.pos = self.center + self.side*abs(self.mvRange*np.sin(2*(np.pi/self.maxT)*t))
+            self.pos = self.center + abs(self.mvRange*np.sin(2*(np.pi/self.maxT)*t))
     
     def getCommand(self):
         return ("#%d P%d" % (self.port, self.pos + self.calibration))

@@ -61,3 +61,6 @@ class Joint(object):
     
     def getCommand(self):
         return ("#%d P%d" % (self.port, self.pos + self.calibration))
+    
+    def getCommandSpeed(self, speed):
+        return ("#%d P%d S%d" % (self.port, self.pos + self.calibration, speed))

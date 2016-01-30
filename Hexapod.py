@@ -59,9 +59,9 @@ class Hexapod(object):
             self.legs[i].coxa.moveCenter()
             self.legs[i].femur.moveCenter()
             self.legs[i].tibia.moveCenter()
-            self.driver.sendCommand(self.legs[i].coxa.getCommand())
-            self.driver.sendCommand(self.legs[i].femur.getCommand())
-            self.driver.sendCommand(self.legs[i].tibia.getCommand())
+            self.driver.sendCommand(self.legs[i].coxa.getCommandSpeed(800))
+            self.driver.sendCommand(self.legs[i].femur.getCommandSpeed(800))
+            self.driver.sendCommand(self.legs[i].tibia.getCommandSpeed(800))
             
     def calibrate(self, leg, c=0, f=0, t=0):
         self.legs[leg].coxa.calibrate(c)

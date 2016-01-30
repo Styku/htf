@@ -1,11 +1,28 @@
 import pygame
 import XboxController
 import time
+
+
 from subprocess import call
 from Hexapod import Hexapod
 from ServoDriver import ServoDriver
+from Display import Display
 
 class Controller(object):
+
+    class Axis():
+        LS_X = 0
+        LS_Y = 1
+        LT = 4
+        RT = 5
+        
+    class EventTypes():
+        ANALOG = 7
+        BUTTON = 11  
+        
+    class Button():
+        SELECT = 6
+        Y = 3    
     
     class Action():
         STAND = 0
@@ -24,6 +41,73 @@ class Controller(object):
         STANDBY = 0
         NORMAL = 1
         CALIBRATION = 2
+        
+    def moveForward(self, val):
+        if val < -0.3:
+            self.action[self.Action.FORWARD]=True
+            self.speed = 2 if abs(val)>0.9 else 1
+        elif val >= -0.3 and val <= 0.3:
+            self.action[self.Action.FORWARD]=False
+            self.speed = 0
+        else:
+            self.action[self.Action.FORWARD]=True
+            self.speed = -2 if abs(val)>0.9 else -1
+         
+    def moveStrafe(self, val):
+        if val < -0.3:
+            self.action[self.Action.STRAFE_RIGHT]=True
+            self.speed = 2 if abs(val)>0.9 else 1
+        elif val >= -0.3 and val <= 0.3:
+            self.action[self.Action.STRAFE_RIGHT]=False
+            self.speed = 0
+        else:
+            self.action[self.Action.STRAFE_RIGHT]=True
+            self.speed = -2 if abs(val)>0.9 else -1
+            
+    def moveRise(self, val):
+        if val > 0:
+            self.action[self.Action.UP]=True
+        else:
+            self.action[self.Action.UP]=False
+            
+    def moveLower(self, val):
+        if val > 0:
+            self.action[self.Action.DOWN]=True
+        else:
+            self.action[self.Action.DOWN]=False 
+        
+    def calibrationMode(self):
+        print "Calibration mode on"
+        self.display.calibration(0)
+        self.mode = self.Mode.CALIBRATION
+        print self.mode
+            
+    def normalMode(self):
+        print "Calibration mode off"
+        self.saveCalibrationData()
+
+        self.mode = self.Mode.NORMAL
+            
+    def selectJoint(self):
+
+        if self.calibration == 17:
+            self.calibration = 0
+        else:
+            self.calibration += 1
+        print "Limb %d selected" % self.calibration
+        self.display.calibration(self.calibration)
+
+        
+    def adjust(self, val):
+        if val < -0.3:
+            self.action[self.Action.INCREASE]=True
+            self.speed = 2 if abs(val)>0.9 else 1
+        elif val >= -0.3 and val <= 0.3:
+            self.action[self.Action.FORWARD]=False
+            self.speed = 0
+        else:
+            self.action[self.Action.DECREASE]=True
+            self.speed = -2 if abs(val)>0.9 else -1
 
     def __init__(self):
         self.state = 0
@@ -34,11 +118,38 @@ class Controller(object):
         self.driver = ServoDriver()
         self.robot.connectDriver(self.driver)
         self.action = [True,False,False,False,False,False,False,False,False,False,False]
-        self.pad = XboxController.XboxController(None, deadzone = 30, scale = 100, invertYAxis = True)
+        self.pad = XboxController.XboxController(None, deadzone = 30, scale = 100, invertYAxis = True) #only for the pygame init...
         self.mode = self.Mode.NORMAL
         self.calibration = 0;
         self.loadCalibrationData()
+        self.display = Display()
         print self.robot.legs[0].coxa.getCommand()
+
+        
+        #Action mapping
+        self.command = {
+            self.Mode.NORMAL: {
+                self.EventTypes.ANALOG: {
+                    self.Axis.LS_X: self.moveStrafe,
+                    self.Axis.LS_Y: self.moveForward,
+                    self.Axis.LT: self.moveLower,
+                    self.Axis.RT: self.moveRise
+                },
+                self.EventTypes.BUTTON: {
+                    self.Button.SELECT: self.calibrationMode
+                }
+            },
+            self.Mode.CALIBRATION: {
+                self.EventTypes.ANALOG: {
+                    self.Axis.LS_Y: self.adjust,
+                },
+                self.EventTypes.BUTTON: {
+                    self.Button.SELECT: self.normalMode,
+                    self.Button.Y: self.selectJoint
+                }
+            }    
+        }
+        
         
     def saveCalibrationData(self):
         f = open("calib.dat", "w+")   
@@ -65,68 +176,11 @@ class Controller(object):
     def getInput(self):
         for event in pygame.event.get():
             print event
-            if event.type == 7:
-                if self.mode == self.Mode.NORMAL: #left analog
-                    if event.axis == 1:
-                        if event.value < -0.3:
-                            self.action[self.Action.FORWARD]=True
-                            self.speed = 2 if abs(event.value)>0.9 else 1
-                        elif event.value >= -0.3 and event.value <= 0.3:
-                            self.action[self.Action.FORWARD]=False
-                            self.speed = 0
-                        else:
-                            self.action[self.Action.FORWARD]=True
-                            self.speed = -2 if abs(event.value)>0.9 else -1
-                    elif event.axis == 0: #STRAFE
-                        if event.value < -0.3:
-                            self.action[self.Action.STRAFE_RIGHT]=True
-                            self.speed = 2 if abs(event.value)>0.9 else 1
-                        elif event.value >= -0.3 and event.value <= 0.3:
-                            self.action[self.Action.STRAFE_RIGHT]=False
-                            self.speed = 0
-                        else:
-                            self.action[self.Action.STRAFE_RIGHT]=True
-                            self.speed = -2 if abs(event.value)>0.9 else -1
-                    elif event.axis ==5: #Right Trigger 
-                        if event.value > 0:
-                            self.action[self.Action.UP]=True
-                        else:
-                            self.action[self.Action.UP]=False
-    
-                    elif event.axis ==2: #Left Trigger 
-                        if event.value > 0:
-                            self.action[self.Action.DOWN]=True
-                        else:
-                            self.action[self.Action.DOWN]=False
-                elif self.mode == self.Mode.CALIBRATION:
-                    if event.value < -0.3:
-                        self.action[self.Action.INCREASE]=True
-                        self.speed = 2 if abs(event.value)>0.9 else 1
-                    elif event.value >= -0.3 and event.value <= 0.3:
-                        self.action[self.Action.FORWARD]=False
-                        self.speed = 0
-                    else:
-                        self.action[self.Action.DECREASE]=True
-                        self.speed = -2 if abs(event.value)>0.9 else -1
-            elif event.type == 11 and event.button == 6:
-                if self.mode != self.Mode.CALIBRATION: #select
-                    print "Calibration mode on"
-                    #self.speak("Calibration mode on")
-                    self.mode = self.Mode.CALIBRATION
-                    print self.mode
-                else:
-                    print "Calibration mode off"
-                    self.saveCalibrationData()
-
-                    self.mode = self.Mode.NORMAL
-            elif event.type == 11 and event.button == 3:
-                if self.mode == self.Mode.CALIBRATION: #select
-                    if self.calibration == 17:
-                        self.calibration = 0
-                    else:
-                        self.calibration += 1
-                    print "Limb %d selected" % self.calibration
-        
+            if event.type in self.command[self.mode]:
+                if event.type == self.EventTypes.ANALOG and event.axis in self.command[self.mode][event.type]:
+                    self.command[self.mode][event.type][event.axis](event.value)
+                elif event.type == self.EventTypes.BUTTON and event.button in self.command[self.mode][event.type]:   
+                    self.command[self.mode][event.type][event.button]()
                     
         if sum(self.action) == 0:
             self.action[self.Action.STAND] = True
